@@ -20,7 +20,10 @@
         // Since Node 0.8, .existsSync() moved from path to fs:
         _existsSync = fs.existsSync || path.existsSync,
         formidable = require('formidable'),
-        nodeStatic = require('node-static'),
+        // replaced nodeStatic with connect webserver
+        //nodeStatic = require('node-static'),
+        connect = require('connect'),
+        http = require('http'),
         imageMagick = require('imagemagick'),
         options = {
             tmpDir: __dirname + '/tmp',
@@ -51,14 +54,19 @@
                 cert: fs.readFileSync('/Applications/XAMPP/etc/ssl.crt/server.crt')
             },
             */
+            
+            /*
             nodeStatic: {
                 cache: 3600 // seconds to cache served files
             }
+            */
         },
         utf8encode = function (str) {
             return unescape(encodeURIComponent(str));
         },
-        fileServer = new nodeStatic.Server(options.publicDir, options.nodeStatic),
+        //fileServer = new nodeStatic.Server(options.publicDir, options.nodeStatic),
+        //serve = connect().use(connect.static('public')),
+
         nameCountRegexp = /(?:(?: \(([\d]+)\))?(\.[^.]+))?$/,
         nameCountFunc = function (s, index, ext) {
             return ' (' + ((parseInt(index, 10) || 0) + 1) + ')' + (ext || '');
@@ -74,68 +82,74 @@
             this.res = res;
             this.callback = callback;
         },
-        serve = function (req, res) {
-            res.setHeader(
-                'Access-Control-Allow-Origin',
-                options.accessControl.allowOrigin
-            );
-            res.setHeader(
-                'Access-Control-Allow-Methods',
-                options.accessControl.allowMethods
-            );
-            var handleResult = function (result, redirect) {
-                    if (redirect) {
-                        res.writeHead(302, {
-                            'Location': redirect.replace(
-                                /%s/,
-                                encodeURIComponent(JSON.stringify(result))
-                            )
-                        });
-                        res.end();
-                    } else {
-                        res.writeHead(200, {
-                            'Content-Type': req.headers.accept
-                                .indexOf('application/json') !== -1 ?
-                                        'application/json' : 'text/plain'
-                        });
-                        res.end(JSON.stringify(result));
-                    }
-                },
-                setNoCacheHeaders = function () {
-                    res.setHeader('Pragma', 'no-cache');
-                    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-                    res.setHeader('Content-Disposition', 'inline; filename="files.json"');
-                },
-                handler = new UploadHandler(req, res, handleResult);
-            switch (req.method) {
-            case 'OPTIONS':
-                res.end();
-                break;
-            case 'HEAD':
-            case 'GET':
-                if (req.url === '/') {
-                    setNoCacheHeaders();
-                    if (req.method === 'GET') {
-                        handler.get();
-                    } else {
-                        res.end();
-                    }
-                } else {
-                    fileServer.serve(req, res);
-                }
-                break;
-            case 'POST':
-                setNoCacheHeaders();
-                handler.post();
-                break;
-            case 'DELETE':
-                handler.destroy();
-                break;
-            default:
-                res.statusCode = 405;
-                res.end();
-            }
-        };
+        //serve = function (req, res) {
+		serve = connect()
+			.use(connect.static('public'))
+			.use(function (req, res) {
+				res.setHeader(
+					'Access-Control-Allow-Origin',
+					options.accessControl.allowOrigin
+				);
+				res.setHeader(
+					'Access-Control-Allow-Methods',
+					options.accessControl.allowMethods
+				);
+				var handleResult = function (result, redirect) {
+						if (redirect) {
+							res.writeHead(302, {
+								'Location': redirect.replace(
+									/%s/,
+									encodeURIComponent(JSON.stringify(result))
+								)
+							});
+							res.end();
+						} else {
+							res.writeHead(200, {
+								'Content-Type': req.headers.accept
+									.indexOf('application/json') !== -1 ?
+											'application/json' : 'text/plain'
+							});
+							res.end(JSON.stringify(result));
+						}
+					},
+					setNoCacheHeaders = function () {
+						res.setHeader('Pragma', 'no-cache');
+						res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+						res.setHeader('Content-Disposition', 'inline; filename="files.json"');
+					},
+					handler = new UploadHandler(req, res, handleResult);
+				switch (req.method) {
+				case 'OPTIONS':
+					res.end();
+					break;
+				case 'HEAD':
+				case 'GET':
+					if (req.url === '/') {
+						setNoCacheHeaders();
+						if (req.method === 'GET') {
+							handler.get();
+						} else {
+							res.end();
+						}
+					} else {
+						//fileServer.serve(req, res);
+						res.end();
+					}
+					break;
+				case 'POST':
+					setNoCacheHeaders();
+					handler.post();
+					break;
+				case 'DELETE':
+					handler.destroy();
+					break;
+				default:
+					res.statusCode = 405;
+					res.end();
+				}
+        });
+        
+    /*    
     fileServer.respond = function (pathname, status, _headers, files, stat, req, res, finish) {
         if (!options.safeFileTypes.test(files[0])) {
             // Force a download dialog for unsafe file extensions:
@@ -150,6 +164,7 @@
         nodeStatic.Server.prototype.respond
             .call(this, pathname, status, _headers, files, stat, req, res, finish);
     };
+    */
     FileInfo.prototype.validate = function () {
         if (options.minFileSize && options.minFileSize > this.size) {
             this.error = 'File is too small';
@@ -282,6 +297,6 @@
     if (options.ssl) {
         require('https').createServer(options.ssl, serve).listen(port);
     } else {
-        require('http').createServer(serve).listen(port);
+        http.createServer(serve).listen(port);
     }
 }(8888));
